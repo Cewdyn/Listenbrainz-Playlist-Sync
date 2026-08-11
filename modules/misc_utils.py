@@ -88,6 +88,48 @@ def normalize_characters(title: str):
     return title
 
 
+def generate_title_search_variants(title: str) -> list[str]:
+    """
+    Generates alternate spellings of a title to search Plex with. Plex's title search matches
+    literal characters, but metadata sources disagree on straight vs "curly" quotes/apostrophes
+    (e.g. ListenBrainz's "World's Smallest Violin" vs Plex's "World's Smallest Violin"), so a
+    title that's otherwise identical can fail to match on quote style alone.
+    :param title: The original track title
+    :return: A de-duplicated list of title variants to try, in priority order
+    """
+    straight_to_curly = {
+        "'": '’',
+        '"': '”',
+        '-': '‐',
+    }
+    curly_to_straight = {value: key for key, value in straight_to_curly.items()}
+
+    def swap(text, mapping):
+        for old, new in mapping.items():
+            text = text.replace(old, new)
+        return text
+
+    variants = [
+        title,
+        swap(title, straight_to_curly),
+        swap(title, curly_to_straight),
+    ]
+
+    # Strip quotes/apostrophes entirely as a last resort
+    stripped = re.sub(r"[\'\"‘’“”]", "", title)
+    variants.append(stripped)
+
+    # De-duplicate while preserving priority order
+    seen = set()
+    unique_variants = []
+    for variant in variants:
+        if variant and variant not in seen:
+            seen.add(variant)
+            unique_variants.append(variant)
+
+    return unique_variants
+
+
 def normalize_artist(name: str) -> str:
     """
     Normalizes an artist name for comparison purposes (lowercase, strips

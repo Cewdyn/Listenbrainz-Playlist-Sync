@@ -100,14 +100,22 @@ def search_for_track(track_list: list[dict]):
 
         try:
             logger.info(f"Searching for {title} by {artist}...")
-            search_result = g.section.searchTracks(title=title)
+
+            search_result = []
+            for variant in generate_title_search_variants(title):
+                search_result = g.section.searchTracks(title=variant)
+                if search_result:
+                    break
 
             if not search_result:
-                # Attempt Normalizing title and search again
+                # Attempt normalizing/filtering the title and search again with those variants too
                 logger.warning("No match on first pass, attempting to normalize title...")
                 normalized_title = normalize_characters(title)
                 filtered_title = filter_words_from_title(normalized_title)
-                search_result = g.section.searchTracks(title=filtered_title)
+                for variant in generate_title_search_variants(filtered_title):
+                    search_result = g.section.searchTracks(title=variant)
+                    if search_result:
+                        break
 
             if not search_result:
                 logger.error(f"No match found for {title} by {artist}, skipping...")
