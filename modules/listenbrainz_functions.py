@@ -28,7 +28,7 @@ def get_dailyjams_playlist(user_token):
     try:
         get_playlist(username,user_token,search_title)
     except Exception as e:
-        logger.error(f"Unable to create Weekly Exploration playlist")
+        logger.error(f"Unable to create Daily Jams playlist")
 
 def get_weeklyjams_playlist(user_token):
     """
@@ -48,7 +48,7 @@ def get_weeklyjams_playlist(user_token):
     try:
         get_playlist(username,user_token,search_title)
     except Exception as e:
-        logger.error(f"Unable to create Weekly Exploration playlist")
+        logger.error(f"Unable to create Daily Jams playlist")
 
 
 def get_weeklyexploration_playlist(user_token):
@@ -130,7 +130,7 @@ def get_playlist(username, user_token, search_title):
 
     except Exception as e:
         logger.error(f"An error occurred: {e}")
-        exit()
+        raise e
 
 def get_tracks_from_playlist(user_token, playlist_mbid):
     """
@@ -206,7 +206,7 @@ def get_tracks_from_playlist(user_token, playlist_mbid):
 
     except Exception as e:
         logger.error(f"An error occurred: {e}")
-        exit()
+        raise e
 
     logger.info("Parsing complete, searching for tracks...")
     search_for_track(track_list)

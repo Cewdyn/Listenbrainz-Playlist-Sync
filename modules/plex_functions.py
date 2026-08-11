@@ -166,10 +166,13 @@ def create_playlist():
     filter_tracks()
 
     logger.info("Checking playlist status...")
+    playlistname = playlist_prefix+g.playlist_name
     if g.playlist_name == "Daily Jams":
-        playlistname = playlist_prefix+g.playlist_name
+        poster = g.cfg['daily_poster']
+    elif g.playlist_name == "Weekly Exploration":
+        poster = g.cfg['weekly_exploration_poster']
     else:
-        playlistname = playlist_prefix+g.playlist_name
+        poster = g.cfg['weekly_jam_poster']
     logger.error("==============================================================================================") 
 
     #exit()
@@ -203,8 +206,8 @@ def create_playlist():
             logger.info("Playlist not found, creating...")
             playlist = g.section.createPlaylist(title=playlistname, items=plex_tracks)
             #playlist = g.section.createPlaylist(title=playlist_prefix+g.playlist_name, items=plex_tracks)
-            if g.poster_path != 'YOUR_FILE_PATH':
-                playlist.uploadPoster(filepath=g.poster_path)
+            if poster != 'YOUR_FILE_PATH':
+                playlist.uploadPoster(filepath=poster)
             playlist.editSummary(summary=g.playlist_summary)
             logger.info("Playlist created")
         except Exception as e:
