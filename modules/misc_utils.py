@@ -1,5 +1,6 @@
 import difflib
 import re
+import unicodedata
 from datetime import datetime, timedelta
 
 def get_playlist_daily_title(username: str):
@@ -88,12 +89,24 @@ def normalize_characters(title: str):
     return title
 
 
+def strip_diacritics(text: str) -> str:
+    """
+    Strips accents/diacritics from a string (e.g. "Pokémon" -> "Pokemon"), since metadata
+    sources don't agree on whether to use the accented or plain-ASCII form.
+    :param text: The text to strip diacritics from
+    :return: The text with diacritics removed
+    """
+    decomposed = unicodedata.normalize('NFKD', text)
+    return ''.join(char for char in decomposed if not unicodedata.combining(char))
+
+
 def generate_title_search_variants(title: str) -> list[str]:
     """
     Generates alternate spellings of a title to search Plex with. Plex's title search matches
-    literal characters, but metadata sources disagree on straight vs "curly" quotes/apostrophes
-    (e.g. ListenBrainz's "World's Smallest Violin" vs Plex's "World's Smallest Violin"), so a
-    title that's otherwise identical can fail to match on quote style alone.
+    literal characters, but metadata sources disagree on things like straight vs "curly"
+    quotes/apostrophes (e.g. ListenBrainz's "World's Smallest Violin" vs Plex's "World's Smallest
+    Violin"), hyphens vs en/em dashes, plain "..." vs the "…" character, non-breaking spaces, and
+    accented vs plain-ASCII characters - so a title that's otherwise identical can fail to match.
     :param title: The original track title
     :return: A de-duplicated list of title variants to try, in priority order
     """
@@ -101,23 +114,33 @@ def generate_title_search_variants(title: str) -> list[str]:
         "'": '’',
         '"': '”',
         '-': '‐',
+        '...': '…',
     }
     curly_to_straight = {value: key for key, value in straight_to_curly.items()}
+    # Longer sequences first so e.g. "..." isn't partially replaced before it's matched whole
+    curly_to_straight = dict(sorted(curly_to_straight.items(), key=lambda item: -len(item[0])))
 
     def swap(text, mapping):
         for old, new in mapping.items():
             text = text.replace(old, new)
         return text
 
+    # Non-breaking spaces and other dash styles that don't have a natural "curly" counterpart
+    extra_normalized = title.replace(' ', ' ').replace('–', '-').replace('—', '-')
+
     variants = [
         title,
         swap(title, straight_to_curly),
         swap(title, curly_to_straight),
+        extra_normalized,
     ]
 
     # Strip quotes/apostrophes entirely as a last resort
     stripped = re.sub(r"[\'\"‘’“”]", "", title)
     variants.append(stripped)
+
+    # Accented -> plain-ASCII fallback (and vice versa isn't possible, so just the one direction)
+    variants.append(strip_diacritics(title))
 
     # De-duplicate while preserving priority order
     seen = set()
