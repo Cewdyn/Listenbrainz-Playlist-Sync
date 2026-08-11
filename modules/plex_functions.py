@@ -83,68 +83,65 @@ def filter_words_from_title(input_title):
 # Search through the Plex library for the track matching the name
 def search_for_track(track_list: list[dict]):
     """
-    Search through the Plex library for the track matching the names in the track_list
+    Search through the Plex library for the track matching the names in the track_list.
+    Plex's title search is loose (it will happily return same/similarly-titled tracks by a
+    completely different artist), so every candidate is verified against the ListenBrainz
+    artist/album artist (or MusicBrainz GUID, when available) before being accepted.
     :param track_list: List of tracks to search for
     """
 
     count = 0
-    guid_match: bool = False
 
     for track in track_list:
         title = track['title']
         artist = track['artist']
         album_artist = track['album_artist']
-        mbids = track['mbids']
+        mbids = track['mbids'] or []
 
         try:
-            logger.info(f"Searching for {title}...")
-            guid_match = False
+            logger.info(f"Searching for {title} by {artist}...")
             search_result = g.section.searchTracks(title=title)
+
             if not search_result:
                 # Attempt Normalizing title and search again
                 logger.warning("No match on first pass, attempting to normalize title...")
                 normalized_title = normalize_characters(title)
                 filtered_title = filter_words_from_title(normalized_title)
                 search_result = g.section.searchTracks(title=filtered_title)
-                if not search_result:
-                    logger.error(f"No match found for {title} after normalize, skipping...")
-                    missing_tracks.append(track)
-                    continue
-                else:
-                    logger.info(f"Found {search_result[0].title} - {search_result[0].artist().title} after Normalizing")
-                    count += 1
-                    plex_tracks.append(search_result[0])
-            elif len(search_result) > 1:
-                logger.warning(f"Found {len(search_result)} results for {title}, checking for exact match...")
+
+            if not search_result:
+                logger.error(f"No match found for {title} by {artist}, skipping...")
+                missing_tracks.append(track)
+                continue
+
+            if len(search_result) > 1:
+                logger.warning(f"Found {len(search_result)} results for {title}, checking for a matching artist...")
+
+            match = None
+
+            # Prefer an exact MusicBrainz recording match, when we have MBIDs to compare against
+            for result in search_result:
+                if result.guids and any(guid.id in mbids for guid in result.guids):
+                    logger.info(f"Found {result.title} - {result.artist().title} with GUID Matching")
+                    match = result
+                    break
+
+            # Fall back to a fuzzy artist match so a same-titled track by a different artist isn't picked
+            if not match:
                 for result in search_result:
-                    # Check to see if the result has a GUID
-                    if not result.guids:
-                        continue  # This means the result in Plex does not have a match
-                    # Compare the guid of the result to the list of MBIDs
-                    if result.guids[0].id in mbids:
-                        logger.info(f"Found {result.title} - {result.artist().title} with GUID Matching")
-                        count += 1
-                        guid_match = True
-                        plex_tracks.append(result)
+                    result_artist = result.artist().title
+                    if artists_match(result_artist, artist, album_artist):
+                        logger.info(f"Found {result.title} - {result_artist} with Artist Matching")
+                        match = result
                         break
 
-                if not guid_match:
-                    for result in search_result:
-                        if result.artist().title == album_artist:
-                            logger.info(f"Found {result.title} - {result.artist().title} with Artist Matching")
-                            count += 1
-                            plex_tracks.append(result)
-                            break
-
-                        # If on the last result and no match was found, add to missing tracks
-                        if result == search_result[-1]:
-                            logger.error(f"No match found for {title}, skipping...")
-                            missing_tracks.append(track)
-            else:
-                # Match was found on first try
-                logger.info(f"Found {search_result[0].title} - {search_result[0].artist().title} by Exact Match")
+            if match:
                 count += 1
-                plex_tracks.append(search_result[0])
+                plex_tracks.append(match)
+            else:
+                logger.error(f"Found {len(search_result)} result(s) for {title}, but none matched artist "
+                             f"'{artist}' / '{album_artist}', skipping...")
+                missing_tracks.append(track)
 
         except plexapi.exceptions.NotFound:
             raise ValueError("Track not found.")

@@ -1,3 +1,5 @@
+import difflib
+import re
 from datetime import datetime, timedelta
 
 def get_playlist_daily_title(username: str):
@@ -84,3 +86,54 @@ def normalize_characters(title: str):
         title = title.replace(key, value)
 
     return title
+
+
+def normalize_artist(name: str) -> str:
+    """
+    Normalizes an artist name for comparison purposes (lowercase, strips
+    featured-artist noise and punctuation).
+    :param name: The artist name to normalize
+    :return: The normalized artist name
+    """
+    if not name:
+        return ""
+
+    name = name.lower()
+    # Drop "feat./ft./featuring ..." suffixes so collabs still match the primary artist
+    name = re.split(r'\bfeat\.?\b|\bft\.?\b|\bfeaturing\b', name)[0]
+    # Collapse everything that isn't alphanumeric (spacing, "&" vs "and", punctuation, etc.)
+    name = re.sub(r'[^a-z0-9]+', ' ', name)
+
+    return name.strip()
+
+
+def artists_match(candidate_artist: str, track_artist: str, album_artist: str, threshold: float = 0.85) -> bool:
+    """
+    Determines whether a Plex track's artist reasonably matches the artist(s) reported by ListenBrainz.
+    Used to avoid matching a track to a same/similarly-titled song by a completely different artist.
+    :param candidate_artist: The artist name of the Plex search result
+    :param track_artist: The track artist reported by ListenBrainz
+    :param album_artist: The album artist reported by ListenBrainz
+    :param threshold: Minimum similarity ratio (0-1) to consider a fuzzy match
+    :return: True if the candidate artist is a reasonable match for either expected artist
+    """
+    candidate_norm = normalize_artist(candidate_artist)
+    if not candidate_norm:
+        return False
+
+    for expected in (track_artist, album_artist):
+        expected_norm = normalize_artist(expected)
+        if not expected_norm:
+            continue
+
+        if candidate_norm == expected_norm:
+            return True
+
+        # Handle cases like "Artist" matching "Artist & Other Artist" or vice versa
+        if candidate_norm in expected_norm or expected_norm in candidate_norm:
+            return True
+
+        if difflib.SequenceMatcher(None, candidate_norm, expected_norm).ratio() >= threshold:
+            return True
+
+    return False
